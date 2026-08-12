@@ -1,0 +1,87 @@
+# Publishes selected family-member xpkgs to ghcr.io/sv-oss (single OCI image:
+# controller + package layer). Trimmed-down copy of the upstream
+# provider-workflows publish-provider-family.yml flow, minus the Upbound
+# mirroring and multi-runner matrix.
+name: Publish sv-oss Provider Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      subpackages:
+        description: 'Subpackages to build and publish (space-separated)'
+        default: 's3files'
+        required: true
+      version:
+        description: 'Version to publish (e.g. v2.7.0-svoss.1)'
+        required: true
+
+env:
+  SVOSS_REGORG: 'ghcr.io/sv-oss'
+  DOCKER_BUILDX_VERSION: 'v0.11.2'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: ${{ env.DOCKER_BUILDX_VERSION }}
+          install: true
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Fetch History
+        run: git fetch --prune --unshallow
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          # Track go.mod rather than a pinned version, as ci.yml does. A stale
+          # pin here fails the build outright once go.mod moves ahead of it.
+          go-version-file: go.mod
+
+      - name: Vendor Dependencies
+        run: make vendor vendor.check
+
+      - name: Build Artifacts
+        run: |
+          make -j2 SUBPACKAGES="${{ github.event.inputs.subpackages }}" \
+            XPKG_REG_ORGS="${{ env.SVOSS_REGORG }}" \
+            XPKG_REG_ORGS_NO_PROMOTE="${{ env.SVOSS_REGORG }}" \
+            CONFIG_DEPENDENCY_REG_ORG="xpkg.upbound.io/upbound" \
+            BRANCH_NAME="main" \
+            VERSION="${{ github.event.inputs.version }}" \
+            build.all
+        env:
+          # docker buildx does not load built images by default; --load does.
+          BUILD_ARGS: '--load'
+
+      - name: Publish Artifacts
+        run: |
+          make -j2 SUBPACKAGES="${{ github.event.inputs.subpackages }}" \
+            XPKG_REG_ORGS="${{ env.SVOSS_REGORG }}" \
+            XPKG_REG_ORGS_NO_PROMOTE="${{ env.SVOSS_REGORG }}" \
+            CONFIG_DEPENDENCY_REG_ORG="xpkg.upbound.io/upbound" \
+            BRANCH_NAME="main" \
+            VERSION="${{ github.event.inputs.version }}" \
+            publish
