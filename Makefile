@@ -3,6 +3,14 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# build/makelib/common.mk derives ROOT_DIR from `$(shell cd <relative path> && pwd -P)`.
+# When CDPATH is set in the environment, `cd` echoes the resolved directory before
+# `pwd -P` prints it, make joins the two lines with a space, and every derived path
+# (ROOT_DIR, WORK_DIR, TOOLS_HOST_DIR, ...) becomes two words. Recipes such as
+# `rm -fr $(TERRAFORM_WORKDIR)` then take the repository root with them. Drop CDPATH
+# from the environment make hands to its shells so those paths stay single-valued.
+unexport CDPATH
+
 # ====================================================================================
 # Setup Project
 
