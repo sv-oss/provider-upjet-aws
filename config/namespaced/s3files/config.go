@@ -31,9 +31,14 @@ func Configure(p *config.Provider) {
 		// Plugin Framework list-nested blocks backed by a single object
 		// (fwtypes.ListNestedObjectValueOf). Framework schemas do not surface
 		// max_items, so upjet cannot infer the singleton list on its own.
+		//
+		// Nested paths must keep the [*] index on every ancestor list segment.
+		// The wildcards are stripped for schema generation, but the runtime
+		// conversion walks the paths while the parent is still a list, so
+		// omitting them fails with "root_directory: not an object".
 		r.AddSingletonListConversion("posix_user", "posixUser")
 		r.AddSingletonListConversion("root_directory", "rootDirectory")
-		r.AddSingletonListConversion("root_directory.creation_permissions", "rootDirectory.creationPermissions")
+		r.AddSingletonListConversion("root_directory[*].creation_permissions", "rootDirectory[*].creationPermissions")
 	})
 	p.AddResourceConfigurator("aws_s3files_mount_target", func(r *config.Resource) {
 		r.References["file_system_id"] = fileSystemIDReference
